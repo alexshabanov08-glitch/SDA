@@ -1,111 +1,105 @@
+%%writefile data.c
 #include <stdio.h>
 #include <string.h>
 #include "data.h"
 
+/* Удаляет \n в конце строки */
+static void clean_newline(char *str) {
+    size_t len = strlen(str);
+    if (len > 0 && str[len - 1] == '\n')
+        str[len - 1] = '\0';
+}
+
+/* Читает строку в buf размером n, очищая буфер ДО чтения */
+static void read_line(const char *prompt, char *buf, int n) {
+    printf("%s", prompt);
+    fflush(stdout);
+   
+    int c;
+    
+    if (fgets(buf, n, stdin)) {
+        clean_newline(buf);
+        
+        if ((int)strlen(buf) == n - 1 && buf[n - 2] != '\n') {
+            while ((c = getchar()) != '\n' && c != EOF);
+        }
+    } else {
+        buf[0] = '\0';
+    }
+}
+
+/* Очищает буфер после scanf */
+static void clear_buffer(void) {
+    int c;
+    while ((c = getchar()) != '\n' && c != EOF);
+}
+
 void addRequest(Request arr[], int *size) {
     if (*size >= MAX_REQUESTS) {
-        printf("Список заполнен\n");
+        printf("Ошибка: список переполнен!\n");
         return;
     }
 
-    Request r;
-
     printf("Введите ID: ");
-    scanf("%d", &r.id);
-    getchar();
+    if (scanf("%d", &arr[*size].id) != 1) {
+        printf("Ошибка ввода ID!\n");
+        clear_buffer();
+        return;
+    }
+    clear_buffer(); 
 
-    printf("Описание: ");
-    fgets(r.description, 100, stdin);
+    read_line("Описание проблемы: ",          arr[*size].description, 100);
+    read_line("Статус (в обработке/завершено): ", arr[*size].status,      50);
+    read_line("Дата подачи (ДД.ММ.ГГГГ): ",   arr[*size].date,        20);
 
-    printf("Статус (в обработке/завершено): ");
-    fgets(r.status, 20, stdin);
-
-    printf("Дата: ");
-    fgets(r.date, 20, stdin);
-
-    arr[*size] = r;
     (*size)++;
+    printf("--- Заявка успешно добавлена ---\n");
 }
 
 void printRequests(Request arr[], int size) {
+    if (size == 0) {
+        printf("\nЗаявок пока нет.\n");
+        return;
+    }
+    printf("\n%-5s | %-25s | %-20s | %-12s\n",
+           "ID", "Описание", "Статус", "Дата");
+    printf("-----------------------------------------------------------------------\n");
     for (int i = 0; i < size; i++) {
-        printf("\nID: %d\n", arr[i].id);
-        printf("Описание: %s", arr[i].description);
-        printf("Статус: %s", arr[i].status);
-        printf("Дата: %s", arr[i].date);
+        printf("%-5d | %-25s | %-20s | %-12s\n",
+               arr[i].id, arr[i].description, arr[i].status, arr[i].date);
     }
 }
 
 void saveToFile(Request arr[], int size) {
     FILE *f = fopen("requests.txt", "w");
-    if (!f) {
-        printf("Ошибка открытия файла\n");
-        return;
-    }
-
+    if (!f) { perror("saveToFile"); return; }
     fprintf(f, "%d\n", size);
-
     for (int i = 0; i < size; i++) {
-        fprintf(f, "%d|%s|%s|%s",
-            arr[i].id,
-            arr[i].description,
-            arr[i].status,
-            arr[i].date);
+        fprintf(f, "%d|%s|%s|%s\n",
+                arr[i].id, arr[i].description, arr[i].status, arr[i].date);
     }
-
     fclose(f);
+    printf("Данные сохранены.\n");
 }
 
 void loadFromFile(Request arr[], int *size) {
     FILE *f = fopen("requests.txt", "r");
-    if (!f) return;
+    if (!f) { *size = 0; return; }
 
-    fscanf(f, "%d\n", size);
+    if (fscanf(f, "%d\n", size) != 1) { *size = 0; fclose(f); return; }
 
     for (int i = 0; i < *size; i++) {
-        fscanf(f, "%d|", &arr[i].id);
-        fgets(arr[i].description, 100, f);
-        strtok(arr[i].description, "|");
-
-        fgets(arr[i].status, 20, f);
-        strtok(arr[i].status, "|");
-
-        fgets(arr[i].date, 20, f);
+        /* %[^|] — всё до символа '|'; %[^\n] — всё до конца строки */
+        if (fscanf(f, "%d|%99[^|]|%49[^|]|%19[^\n]\n",
+                   &arr[i].id,
+                   arr[i].description,
+                   arr[i].status,
+                   arr[i].date) != 4) {
+       
+            *size = i;
+            break;
+        }
     }
-
     fclose(f);
-}
-
-void searchById(Request arr[], int size) {
-    int id;
-    printf("Введите ID для поиска: ");
-    scanf("%d", &id);
-
-    for (int i = 0; i < size; i++) {
-        if (arr[i].id == id) {
-            printf("Найдено:\n");
-            printf("%s", arr[i].description);
-            return;
-        }
-    }
-    printf("Не найдено\n");
-}
-
-void editRequest(Request arr[], int size) {
-    int id;
-    printf("Введите ID для редактирования: ");
-    scanf("%d", &id);
-    getchar();
-
-    for (int i = 0; i < size; i++) {
-        if (arr[i].id == id) {
-            printf("Новое описание: ");
-            fgets(arr[i].description, 100, stdin);
-            printf("Новый статус: ");
-            fgets(arr[i].status, 20, stdin);
-            return;
-        }
-    }
-
-    printf("Не найдено\n");
+    printf("Загружено заявок: %d\n", *size);
 }
